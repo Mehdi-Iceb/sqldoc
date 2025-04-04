@@ -249,7 +249,9 @@
   
   onMounted(async () => {
     try {
-      const response = await axios.get(`/procedure/${props.procedureName}/details`)
+      console.log('Chargement des détails pour:', props.procedureName);
+      const response = await axios.get(`/api/procedure/${encodeURIComponent(props.procedureName)}/details`)
+      console.log('Réponse reçue:', response.data);
       procedureDetails.value = response.data
       form.value.description = response.data.description || ''
     } catch (err) {

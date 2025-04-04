@@ -59,7 +59,7 @@ class ProcedureController extends Controller
             'create_date' => $procedureInfo ? $procedureInfo->creation_date : null,
             'modify_date' => $procedureInfo ? $procedureInfo->last_change_date : null,
             'parameters' => $parameters,
-            'definition' => isset($parameters[0]) ? $parameters[0]->definition : null
+            'definition' => $procedureInfo ? $procedureInfo->definition : null
         ]);
 
     } catch (\Exception $e) {

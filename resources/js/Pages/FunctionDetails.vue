@@ -258,7 +258,9 @@
   // Charger les détails de la fonction
   onMounted(async () => {
     try {
-      const response = await axios.get(`/function/${props.functionName}/details`);
+      console.log('Chargement des détails pour:', props.functionName);
+      const response = await axios.get(`/api/function/${encodeURIComponent(props.functionName)}/details`);
+      console.log('Réponse reçue:', response.data);
       functionData.value = response.data;
       descriptionText.value = response.data.description || '';
     } catch (error) {
