@@ -96,11 +96,11 @@
                       stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
               </svg>
               {{ table.name }}
-              <span v-if="table.matchedColumn" class="ml-2 text-xs bg-blue-600 px-2 py-0.5 rounded">
-                <template v-if="table.matchReason === 'primaryKey'">PK: </template>
-                <template v-else-if="table.matchReason === 'foreignKey'">FK: </template>
-                <template v-else-if="table.matchReason === 'column'">Col: </template>
-                {{ table.matchedColumn }}
+              <span v-if="table.matchReason && table.matchReason !== 'name'" class="ml-2 text-xs bg-blue-600 px-2 py-0.5 rounded">
+                <template v-if="table.matchReason === 'column'">Col: {{ table.matchedColumn }}</template>
+                <template v-else-if="table.matchReason === 'primaryKey'">PK: {{ getPrimaryKeyColumn(table) || '' }}</template>
+                <template v-else-if="table.matchReason === 'foreignKey'">FK: {{ getForeignKeyColumn(table) || '' }}</template>
+                <template v-else-if="table.matchReason === 'description'">Desc: {{ table.matchedColumn }}</template>
               </span>
             </Link>
           </li>
@@ -273,6 +273,7 @@ const toggleFilter = (filterType) => {
 
 // Fonction pour vérifier si une section doit être affichée
 const shouldShowSection = (section) => {
+  console.log("activeFilters:", activeFilters.value);
   return activeFilters.value.includes(section);
 };
 
@@ -287,38 +288,83 @@ const filteredTables = computed(() => {
   if (!searchQuery.value) return databaseStructure.value.tables;
   
   const query = searchQuery.value.toLowerCase();
-  const results = [];
   
-  // Recherche dans les noms de tables
-  for (const table of databaseStructure.value.tables) {
+  return databaseStructure.value.tables.filter(table => {
+    // Recherche dans le nom de la table
     if (table.name.toLowerCase().includes(query)) {
-      results.push(table);
-      continue;
+      return true;
     }
     
-    // Si les colonnes sont disponibles, recherche aussi dans les colonnes
-    const columns = tableColumns.value[table.name];
-    if (columns) {
-      let foundInColumns = false;
-      
-      for (const column of columns) {
-        if (column.column_name.toLowerCase().includes(query)) {
-          // Ajouter la table avec l'information sur la colonne correspondante
-          results.push({
-            ...table,
-            matchedColumn: column.column_name
-          });
-          foundInColumns = true;
-          break;
+    // Recherche des clés primaires (détecter différentes variations)
+    if ((query.includes('primary') || query.includes('pk') || query.includes('clé primaire')) && 
+        hasPrimaryKey(table)) {
+      table.matchReason = 'primaryKey';
+      return true;
+    }
+    
+    // Recherche des clés étrangères (détecter différentes variations)
+    if ((query.includes('foreign') || query.includes('fk') || query.includes('clé étrangère')) && 
+        hasForeignKey(table)) {
+      table.matchReason = 'foreignKey';
+      return true;
+    }
+    
+    // Recherche approfondie dans les colonnes individuelles
+    if (table.columns) {
+      for (const column of table.columns) {
+        // Recherche par nom de colonne
+        if (column.name.toLowerCase().includes(query)) {
+          table.matchReason = 'column';
+          table.matchedColumn = column.name;
+          return true;
+        }
+        
+        // Recherche dans les descriptions de colonnes
+        if (column.description && column.description.toLowerCase().includes(query)) {
+          table.matchReason = 'description';
+          table.matchedColumn = column.name;
+          return true;
         }
       }
-      
-      if (foundInColumns) continue;
     }
+    
+    return false;
+  });
+});
+
+const hasPrimaryKey = (table) => {
+  if (table.has_primary_key) return true;
+  
+  if (table.columns) {
+    return table.columns.some(column => column.key === 'PK');
   }
   
-  return results;
-});
+  return false;
+};
+
+const hasForeignKey = (table) => {
+  if (table.has_foreign_key) return true;
+  
+  if (table.columns) {
+    return table.columns.some(column => column.key === 'FK');
+  }
+  
+  return false;
+};
+
+// Obtenir la colonne clé primaire
+const getPrimaryKeyColumn = (table) => {
+  if (!table.columns) return null;
+  
+  return table.columns.find(column => column.key === 'PK')?.name || null;
+};
+
+// Obtenir la colonne clé étrangère
+const getForeignKeyColumn = (table) => {
+  if (!table.columns) return null;
+  
+  return table.columns.find(column => column.key === 'FK')?.name || null;
+};
 
 // Autres computed properties pour filtrer les vues, fonctions, etc.
 const filteredViews = computed(() => {
@@ -360,6 +406,42 @@ const filteredTriggers = computed(() => {
     return trigger.name.toLowerCase().includes(query);
   });
 });
+
+// Détermine si on doit afficher les détails de correspondance
+const shouldShowMatchDetails = (table) => {
+  if (!searchQuery.value) return false;
+  
+  const query = searchQuery.value.toLowerCase();
+  
+  // Si le nom de la table correspond à la recherche, pas besoin de détails
+  if (table.name.toLowerCase().includes(query)) {
+    return false;
+  }
+  
+  // Si c'est une recherche de clé primaire ou étrangère, afficher le badge correspondant
+  if ((query.includes('primary') && table.has_primary_key) || 
+      (query.includes('foreign') && table.has_foreign_key)) {
+    return true;
+  }
+  
+  // Si on a trouvé une colonne correspondante, afficher son nom
+  return getMatchedColumn(table) !== null;
+};
+
+// Obtient le nom de la première colonne correspondante
+const getMatchedColumn = (table) => {
+  if (!searchQuery.value || !table.columns) return null;
+  
+  const query = searchQuery.value.toLowerCase();
+  
+  for (const column of table.columns) {
+    if (column.name.toLowerCase().includes(query)) {
+      return column.name;
+    }
+  }
+  
+  return null;
+};
 
 
 // const searchInTableColumns = async () => {
@@ -427,7 +509,6 @@ onMounted(async () => {
     console.log("Triggers:", databaseStructure.value?.triggers);
     
     // Ouvrir la section tables par défaut
-    showingTables.value = true;
   } catch (error) {
     console.error('Erreur lors du chargement de la structure:', error);
   }

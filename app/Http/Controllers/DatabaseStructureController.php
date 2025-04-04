@@ -10,6 +10,7 @@ use App\Models\PsDescription;
 use App\Models\FunctionDescription;
 use App\Models\TriggerDescription;
 use Illuminate\Support\Facades\Log;
+use App\Models\TableStructure;
 
 class DatabaseStructureController extends Controller
 {
@@ -28,6 +29,29 @@ class DatabaseStructureController extends Controller
             ->select('id', 'tablename as name', 'description')
             ->get();
             Log::info('Tables trouvées: ' . $tables->count());
+
+        $tables = $tables->map(function ($table) {
+            $columns = TableStructure::where('id_table', $table->id)
+                ->select('column as name', 'key', 'description')
+                ->get();
+                
+            $table->columns = $columns;
+                
+            // Aussi, créer un texte de recherche qui combine toutes les colonnes
+            $columnsText = $columns->pluck('name')->join(' ');
+            $table->searchable_columns = $columnsText;
+                
+            // Indiquer si la table a une clé primaire ou étrangère
+            $table->has_primary_key = $columns->contains(function ($column) {
+                return $column->key === 'PK';
+            });
+                
+            $table->has_foreign_key = $columns->contains(function ($column) {
+                return $column->key === 'FK';
+            });
+                
+            return $table;
+        });
             
         $views = ViewDescription::where('dbid', $dbId)
             ->select('id', 'viewname as name', 'description')
